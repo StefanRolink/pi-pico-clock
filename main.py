@@ -1,8 +1,11 @@
+import os
+import json
 import time
 from machine import Pin
 from pimoroni import Button
 from pimoroni import RGBLED
 from picographics import PicoGraphics, DISPLAY_PICO_DISPLAY, PEN_P4
+from machine import Timer
 
 led = RGBLED(6, 7, 8)
 led.set_rgb(0,0,0) # LED off.
@@ -29,18 +32,46 @@ class Clock:
     hours = 0
     minutes = 0
     seconds = 0
+    timer = Timer(-1)
     
     HOURS_IN_DAY = 24
     MINUTES_IN_HOUR = 60
     SECONDS_IN_MINUTE = 60
 
-    def __init__(self, hours=0, minutes=0, seconds=0):
+    def __init__(self, hours=0, minutes=0, seconds=0, filename=''):
         """Constructs a new Clock object."""
-        self.hours = hours
-        self.minutes = minutes
-        self.seconds = seconds
-
-    def tick(self):
+        if filename:
+            try:
+                with open(filename, 'r') as file:
+                    j = json.load(file)
+                    self.hours = j['hours']
+                    self.minutes = j['minutes']
+                    self.seconds = j['seconds']
+            except:
+                self.hours = 0
+                self.minutes = 0
+                self.seconds = 0
+        else:
+            self.hours = hours
+            self.minutes = minutes
+            self.seconds = seconds
+            
+        self.timer.init(period=1000, callback=self.tick)
+    
+#     def __init__(self, filename='time.json'):
+#         """Constructs a new Clock object from json data."""
+#         try:
+#             with open(filename, 'r') as file:
+#                 j = json.load(file)
+#                 self.hours = j['hours']
+#                 self.minutes = j['minutes']
+#                 self.seconds = j['seconds']
+#         except:
+#             self.hours = 0
+#             self.minutes = 0
+#             self.seconds = 0
+    
+    def tick(self, t=0):
         """ Passing of 1 second."""
         self.seconds += 1
         if self.seconds >= self.SECONDS_IN_MINUTE:
@@ -67,6 +98,8 @@ class Clock:
             self.minutes = 0 
             self.tick_hours()
 
+        self.save_as_json()
+
     def get_hours(self):
         """Getter for hours."""
         return self.hours
@@ -92,8 +125,18 @@ class Clock:
     def set_seconds(self, seconds):
         """Setter for seconds."""
         self.seconds = seconds
+    
+    def save_as_json(self, filename='time.json'):
+        """Save the current time as json file."""
+        t = {
+            'hours': self.hours,
+            'minutes': self.minutes,
+            'seconds': self.seconds
+        }
+        with open(filename, 'w') as file:
+            json.dump(t, file)
 
-current_time = Clock(14, 22)
+current_time = Clock(filename='time.json')
 
 def callback_a(pin):
     """Callback for button A: Hour++."""
@@ -101,6 +144,7 @@ def callback_a(pin):
     current_time.hours += 1 
     current_time.hours %= current_time.HOURS_IN_DAY
     current_time.set_seconds(0)
+    current_time.save_as_json()
     clear()
     refresh_time()
 
@@ -134,7 +178,7 @@ def callback_y(pin):
 button_a.irq(trigger=Pin.IRQ_FALLING, handler=callback_a)
 button_b.irq(trigger=Pin.IRQ_FALLING, handler=callback_b)
 button_x.irq(trigger=Pin.IRQ_FALLING, handler=callback_x)
-button_y.irq(trigger=Pin.IRQ_FALLING, handler=callback_y)
+button_y.irq(trigger=Pin.IRQ_FALLING, handler=callback_y)    
 
 def clear():
     """Clears the screen to black."""
@@ -146,31 +190,30 @@ def refresh_time():
     """Refresh current time."""
     global display
     display.set_pen(GREEN)
-    display.text("{0:0>2}:{1:0>2}".format(current_time.get_hours(), current_time.get_minutes()), 7, 25, 240, 6)
+    expl = '!' if current_time.get_hours() == 22 and current_time.get_minutes() == 22 else ''
+    display.text("{0:0>2}:{1:0>2}{2}".format(current_time.get_hours(), current_time.get_minutes(), expl), 7, 25, 240, 6)
     display.update()
 
 def main():
     clear() # Clear screen
+    refresh_time()
     
     # Run main loop:
     while True:
         old_minutes = current_time.get_minutes()
-        current_time.tick()
-        if old_minutes != current_time.get_minutes():
-            clear()  # Only clear screen when necessary
-
+                
         # Display time as mm:mm
-        display.set_pen(GREEN)
-        expl = '!' if current_time.get_hours() == 22 and current_time.get_minutes() == 22 else ''
-        display.text("{0:0>2}:{1:0>2}{2}".format(current_time.get_hours(), current_time.get_minutes(), expl), 7, 25, 240, 6)
-        display.update()
+        refresh_time()
         time.sleep(.5)
         
         # Make ':' blink
         display.set_pen(BLACK)
         display.text("   :", 1, 25, 240, 6)
         display.update()
-        time.sleep(.5)  
+        time.sleep(.5)
+        
+        if old_minutes != current_time.get_minutes():
+            clear()  # Only clear screen when necessary
  
 if __name__ == '__main__':
     main()

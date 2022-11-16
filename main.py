@@ -8,8 +8,9 @@ from picographics import PicoGraphics, DISPLAY_PICO_DISPLAY, PEN_P4
 from machine import Timer
 
 led = RGBLED(6, 7, 8)
-led.set_rgb(0,0,0) # LED off.
+led.set_rgb(0,0,0) # Make sure LED is off.
 
+# Init the 4 buttons:
 button_a = Pin(12, Pin.IN, Pin.PULL_UP)
 button_b = Pin(13, Pin.IN, Pin.PULL_UP)
 button_x = Pin(14, Pin.IN, Pin.PULL_UP)
@@ -18,9 +19,11 @@ button_y = Pin(15, Pin.IN, Pin.PULL_UP)
 # We're only using a few colours so we can use a 4 bit/16 colour palette and save RAM!
 display = PicoGraphics(display=DISPLAY_PICO_DISPLAY, pen_type=PEN_P4, rotate=0)
 
+# Display setup
 display.set_backlight(0.5)
 display.set_font("bitmap14_outline")
 
+# Define some colors:
 WHITE   = display.create_pen(255, 255, 255)
 BLACK   = display.create_pen(0, 0, 0)
 CYAN    = display.create_pen(0, 255, 255)
@@ -29,9 +32,11 @@ YELLOW  = display.create_pen(255, 255, 0)
 GREEN   = display.create_pen(0, 255, 0)
 
 class Clock:
+    """Simple clock class, with back up and hardware-ish timer."""
     hours = 0
     minutes = 0
     seconds = 0
+    backup_file = ''
     timer = Timer(-1)
     
     HOURS_IN_DAY = 24
@@ -41,6 +46,8 @@ class Clock:
     def __init__(self, hours=0, minutes=0, seconds=0, filename=''):
         """Constructs a new Clock object."""
         if filename:
+            # Load data from json file, if filename is given:
+            self.backup_file = filename
             try:
                 with open(filename, 'r') as file:
                     j = json.load(file)
@@ -48,28 +55,18 @@ class Clock:
                     self.minutes = j['minutes']
                     self.seconds = j['seconds']
             except:
+                # Revert to defaults on error
                 self.hours = 0
                 self.minutes = 0
                 self.seconds = 0
         else:
+            # Load parameters when no filename is given:
             self.hours = hours
             self.minutes = minutes
             self.seconds = seconds
             
+        # Start timer:
         self.timer.init(period=1000, callback=self.tick)
-    
-#     def __init__(self, filename='time.json'):
-#         """Constructs a new Clock object from json data."""
-#         try:
-#             with open(filename, 'r') as file:
-#                 j = json.load(file)
-#                 self.hours = j['hours']
-#                 self.minutes = j['minutes']
-#                 self.seconds = j['seconds']
-#         except:
-#             self.hours = 0
-#             self.minutes = 0
-#             self.seconds = 0
     
     def tick(self, t=0):
         """ Passing of 1 second."""
@@ -97,7 +94,8 @@ class Clock:
         if self.minutes >= self.MINUTES_IN_HOUR:
             self.minutes = 0 
             self.tick_hours()
-
+        
+        # Backup time every minute:
         self.save_as_json()
 
     def get_hours(self):
@@ -126,18 +124,19 @@ class Clock:
         """Setter for seconds."""
         self.seconds = seconds
     
-    def save_as_json(self, filename='time.json'):
+    def save_as_json(self):
         """Save the current time as json file."""
         t = {
             'hours': self.hours,
             'minutes': self.minutes,
             'seconds': self.seconds
         }
-        with open(filename, 'w') as file:
+        with open(self.backup_file, 'w') as file:
             json.dump(t, file)
 
 current_time = Clock(filename='time.json')
 
+# The 4 callback functions for 4 buttons:
 def callback_a(pin):
     """Callback for button A: Hour++."""
     global current_time
@@ -154,6 +153,7 @@ def callback_b(pin):
     current_time.hours -= 1 
     current_time.hours %= current_time.HOURS_IN_DAY
     current_time.set_seconds(0)
+    current_time.save_as_json()
     clear()
     refresh_time()
 
@@ -163,6 +163,7 @@ def callback_x(pin):
     current_time.minutes += 1 
     current_time.minutes %= current_time.MINUTES_IN_HOUR
     current_time.set_seconds(0)
+    current_time.save_as_json()
     clear()
     refresh_time()
 
@@ -172,9 +173,11 @@ def callback_y(pin):
     current_time.minutes -= 1 
     current_time.minutes %= current_time.MINUTES_IN_HOUR
     current_time.set_seconds(0)
+    current_time.save_as_json()
     clear()
     refresh_time()
     
+# Assign callback to each button:
 button_a.irq(trigger=Pin.IRQ_FALLING, handler=callback_a)
 button_b.irq(trigger=Pin.IRQ_FALLING, handler=callback_b)
 button_x.irq(trigger=Pin.IRQ_FALLING, handler=callback_x)
@@ -195,10 +198,11 @@ def refresh_time():
     display.update()
 
 def main():
+    """Main loop."""
     clear() # Clear screen
-    refresh_time()
+    refresh_time() # Fill screen
     
-    # Run main loop:
+    # Start actual main loop:
     while True:
         old_minutes = current_time.get_minutes()
                 
@@ -206,14 +210,16 @@ def main():
         refresh_time()
         time.sleep(.5)
         
-        # Make ':' blink
+        # Make ':' blink, by painting it over in black:
         display.set_pen(BLACK)
         display.text("   :", 1, 25, 240, 6)
         display.update()
         time.sleep(.5)
         
+        # Only clear screen when time-digits changed:
         if old_minutes != current_time.get_minutes():
-            clear()  # Only clear screen when necessary
+            clear()  
  
+
 if __name__ == '__main__':
     main()
